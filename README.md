@@ -1,3 +1,19 @@
+## 开发安装
+
+项目采用 `src/` 布局。开发时在项目根目录使用 editable 安装一次：
+
+```bash
+python -m pip install -e .
+```
+
+之后对 `src/nonthradsim/` 下 Python 源码的修改会在下次启动 Python 进程时立即生效，无需重复执行 `pip install .`。运行示例程序也应使用同一个 Python 环境：
+
+```bash
+python main.py
+```
+
+依赖或 `pyproject.toml` 中的包配置发生变更时，再重新执行上述安装命令。
+
 ## Class:
 0.0 spatialgrid
     定义三维网格，101 * 101 * 101
@@ -27,5 +43,4 @@
 
 3. projection(photon_total, grid_obs)
    把光子的空间分布投影到观测者系，给定观测者grid。用插值。
-
 
