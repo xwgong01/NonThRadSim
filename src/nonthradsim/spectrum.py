@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class Spectrum():
+
     def __init__(self, Emin, Emax, shape, dtype = np.float32):
         self.Emin = Emin
         self.Emax = Emax

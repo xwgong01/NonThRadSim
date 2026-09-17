@@ -1,6 +1,7 @@
 from nonthradsim.grid import *
 from nonthradsim.particle import *
 from nonthradsim.spectrum import *
+from nonthradsim.synchrotron import *
 
 def MaxwellBoltzmann(spectrum, T, n):
     # TODO: Implement the Maxwell-Boltzmann distribution for the particle spectrum
@@ -16,10 +17,10 @@ def Powerlaw(spectrum, alpha, Emin, Emax, n):
 
 if __name__ == "__main__":
     T = 1e5
-    grid = Grid(dimension=3, dx=0.1, n_mesh=51, data_type=float)
+    grid = Grid(dimension=3, dx=0.1, n_mesh=21, data_type=float)
     particle = Particle(grid = grid,
-                        m=1,
-                        q=-1,
+                        mass=1,
+                        charge=-1,
                         gm_min=1e-1,
                         gm_max=1e10,
                         n_spectrum=101)
@@ -35,9 +36,15 @@ if __name__ == "__main__":
                     n_spectrum=101)
     
 
-    for idx in np.ndindex(photon.value.shape):
-        Powerlaw(photon.value[idx], alpha=4.0, Emin=1e2, Emax=1e5, n=1e5)
-    print("Photon values initialized.")    
+    B = 1e-6
+    # prepare Function Table
+    Fx = F()
+    for idx in np.ndindex(particle.value.shape):
+        synchrotron(photon.value[idx], particle.value[idx], B, Fx)
+        print(idx)
+    
+    print("Photon values initialized.")
+
     # particle[0,0,0].plot(loglog=True, gm_compensate=2.0)
     photon[0,0,0].plot(loglog=True, power_compensate=2.0)
     plt.show()
