@@ -37,10 +37,10 @@ def synchrotron(photon, particle, magnetic_field, Fx):
     E_ph = photon.E # erg
     nu = E_ph / C.h
     gm = particle.gm + 1.
-    B = magnetic_field
+    B = magnetic_field # in G
     if np.ndim(B) == 0:
         B = np.full(photon.grid.shape, B)
-    N = particle.value
+    N = particle.value  # particle number not normalized by space, but in dloggm (dN/dgm)
     dloggm = np.log(gm[1:]/gm[:-1]).mean()
 
     syn_spec = np.zeros_like(photon.value)
@@ -48,9 +48,9 @@ def synchrotron(photon, particle, magnetic_field, Fx):
         nuc = 3 / 4 / np.pi * gm[i]**2 * C.q * B / C.me / C.c
         x = nu[None, None, None, :]/nuc[..., None]
         # print(B.shape, x.shape, N.shape)
-        P = 3**0.5 * C.q **3 * B[..., None] / C.me / C.c**2 * np.interp(x,Fx[0],Fx[1])*N[..., i,None]
+        P = 3**0.5 * C.q **3 * B[..., None] *(1/2)/ C.me / C.c**2 * np.interp(x,Fx[0],Fx[1])*N[..., i,None] 
         # print(P.shape, gm[i].shape, dloggm)
-        syn_spec += (P*gm[i]*dloggm)
+        syn_spec += (P / C.h * dloggm * gm[i] / E_ph)
         
     # print(syn_spec.max())
     photon.value += syn_spec
