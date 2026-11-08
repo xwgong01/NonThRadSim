@@ -4,7 +4,7 @@ import nonthradsim.Constants as C
 import matplotlib.pyplot as plt
 
 def G(x_q,y_G):
-    return 2*x_q*np.ln(x_q)+(1+2*x_q)*(1-x_q)+((1-x_q)*x_q**2*y_G**2)/(2*(1+y_G*x_q))
+    return 2*x_q*np.log(x_q)+(1+2*x_q)*(1-x_q)+((1-x_q)*x_q**2*y_G**2)/(2*(1+y_G*x_q))
 
 def IC(photon,particle):
     preE_ph=photon.E

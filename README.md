@@ -44,3 +44,26 @@ python main.py
 3. projection(photon_total, grid_obs)
    把光子的空间分布投影到观测者系，给定观测者grid。用插值。
 
+## 1D spherical MC
+
+The current branch also contains a 1D radial spherical model:
+
+```python
+from nonthradsim.grid import Grid
+from nonthradsim.sampling import sample_photons
+from nonthradsim.mc import run_mc
+from nonthradsim.observer import plot_bands
+```
+
+`Grid(dimension=1, dx=..., n_mesh=...)` creates radial cells from zero to
+the outer radius. `Particle.value` and `Photon.value` are stored as
+`dN/(dV dgamma)` and `dN/(dV dE)`. The photon sampler uses log-energy
+importance sampling and assigns an unbiased packet weight.
+
+`run_mc` propagates vectorized batches through the spherical grid. It uses
+null-collision sampling with the Klein-Nishina kernel, and can run batches
+with `joblib` using `n_jobs`. Escaped packets contain their energy, weight,
+position, direction, and `mu` relative to the local radial direction.
+
+See `test/demo_spherical_mc.ipynb` for a complete synchrotron, MC, spectrum,
+and circular sky-map example.
