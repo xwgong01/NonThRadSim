@@ -161,15 +161,15 @@ def _sample_collision(particle, cell, energy, direction, rng):
     return real, gamma[real], electron_beta[real]
 
 
-def run_mc_batch(grid, particle, photon, n_particles, seed=None, max_steps=100000):
-    """Run one vectorized batch of spherical MC photons."""
-    packets = sample_photons(photon, n_particles, seed=seed)
+def propagate_batch(grid, particle, packets, seed=None, max_steps=100000):
+    """Propagate a user-supplied batch of spherical MC photons."""
     rng = np.random.default_rng(seed + 1 if seed is not None else None)
     position = packets["position"]
     direction = packets["direction"]
     energy = packets["energy"]
     weight = packets["weight"]
     dead = packets["dead"]
+    n_particles = energy.size
     n_scatter = np.zeros(n_particles, dtype=int)
     scatter_radius = []
     tau = rng.exponential(1, n_particles)
@@ -240,6 +240,12 @@ def run_mc_batch(grid, particle, photon, n_particles, seed=None, max_steps=10000
         "position": escaped_position,
         "direction": escaped_direction,
     }
+
+
+def run_mc_batch(grid, particle, photon, n_particles, seed=None, max_steps=100000):
+    """Sample and propagate one vectorized batch of spherical MC photons."""
+    packets = sample_photons(photon, n_particles, seed=seed)
+    return propagate_batch(grid, particle, packets, seed=seed, max_steps=max_steps)
 
 
 def _run_batch(args):

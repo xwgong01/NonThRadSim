@@ -2,8 +2,9 @@ import numpy as np
 
 from nonthradsim.distributions import Powerlaw
 from nonthradsim.grid import Grid
-from nonthradsim.mc import run_mc
+from nonthradsim.mc import propagate_batch, run_mc
 from nonthradsim.particle import Particle, Photon
+from nonthradsim.sampling import sample_manual_photons
 from nonthradsim.synchrotron import F, synchrotron
 
 
@@ -28,3 +29,19 @@ def test_mc_packets_escape():
     assert np.all(escaped["mu"] >= -1)
     assert np.all(escaped["mu"] <= 1)
     assert np.all(escaped["weight"] > 0)
+
+
+def test_manual_packets_propagate():
+    grid = Grid(1, 1.0, 4)
+    particle = Particle(grid, 1, -1, 1, 10, 12)
+    particle.value[:] = 0
+    position = np.zeros((8, 3))
+    position[:, 0] = 0.5
+    packets = sample_manual_photons(
+        position,
+        energy=1e-12,
+        direction=np.tile([1.0, 0.0, 0.0], (8, 1)),
+    )
+    escaped = propagate_batch(grid, particle, packets, seed=5)
+    assert escaped["energy"].size == 8
+    assert np.all(escaped["n_scatter"] == 0)

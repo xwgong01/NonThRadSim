@@ -1,0 +1,272 @@
+NonThRadSim discussion summary
+==============================
+
+1. Project goal
+----------------
+
+The project aims to calculate multi-band radiation and sky maps of a compact
+astrophysical source, with a PWN as the main application. The current model
+starts from a prescribed spatial and energy distribution of non-thermal
+electrons, calculates synchrotron seed photons, transports photon packets,
+and treats inverse Compton (IC) scattering with Monte Carlo (MC).
+
+The first formal model is spherical symmetry. This is suitable for a smooth
+PWN or TeV halo, isotropic diffusion, isotropic external radiation fields,
+and total spectra or circularly symmetric images. Axisymmetric geometry can
+be added later for torus/jet structures, ordered magnetic fields, or viewing
+angle effects.
+
+2. Current geometry and grid
+----------------------------
+
+The spatial grid is one-dimensional in radius:
+
+    r = 0 ... R
+
+The radial cells are defined by `grid.edges`, and the spatial profiles are
+stored on `grid.r`. A demo example uses 101 radial cells with a physical cell
+size of 1e13--1e15 cm, depending on the notebook version. The outer radius
+is always:
+
+    R = n_mesh * dx
+
+The particle spectrum is stored as dN/(dV dgamma), and the photon spectrum is
+stored as dN/(dV dE). In an actual physical calculation, the distinction
+between photon density and photon emissivity/rate must be kept explicit.
+
+3. Synchrotron calculation
+--------------------------
+
+The existing 3D implementation was extended to work with a 1D radial grid.
+For a given magnetic-field strength B(r) and electron spectrum n_e(r,gamma),
+the synchrotron spectrum is calculated using the standard synchrotron kernel
+F(x). The resulting photon field is used as the seed field for MC sampling.
+
+For an optically thin initial synchrotron image, a deterministic reference
+projection is available through the line-of-sight integral:
+
+    I_syn(b,E) = 2 integral_b^R j_syn(r,E) r dr / sqrt(r^2-b^2)
+
+This deterministic image is useful for validating the MC projection, but the
+final desired calculation should still be based on escaped MC photons.
+
+4. Photon packet sampling
+-------------------------
+
+Photon packets are sampled from the joint spherical distribution. If the
+photon field is n_gamma(E,r) = dN/(dV dE), the target distribution is:
+
+    dN proportional to 4 pi r^2 n_gamma(E,r) dr dE
+
+The radial coordinate is sampled with the spherical-volume factor r^2. The
+photon energy is sampled uniformly in log(E), and each packet receives an
+importance weight that restores the physical photon spectrum.
+
+Each packet contains approximately:
+
+    position, direction, energy, weight
+
+In the spherical transport calculation, the full 3D position and direction
+are currently retained internally. The radial profile is still only 1D.
+
+5. MC propagation and scattering
+---------------------------------
+
+Photon propagation is event driven rather than based on a fixed time step.
+For each photon, a target optical depth is sampled:
+
+    tau_target = -log(random())
+
+The photon is propagated through radial shells. In each shell, the optical
+depth to the next shell boundary is calculated. If the target optical depth
+is not reached, the photon crosses the shell. Otherwise it scatters inside
+the shell.
+
+The current code uses a null-collision majorant:
+
+    alpha_major = 2 sigma_T n_e(r)
+
+This is an upper bound because sigma_KN <= sigma_T and
+(1 - beta mu_e) <= 2. A candidate electron gamma and direction are sampled,
+then the candidate is accepted as a real collision with probability:
+
+    P_real = (1 - beta mu_e) sigma_KN(epsilon_prime) / (2 sigma_T)
+
+Rejected candidates are null collisions and do not change the photon.
+
+Real scattering uses the Klein-Nishina kernel. The photon is transformed to
+the electron rest frame, the scattering angle is sampled from the differential
+Klein-Nishina cross section, and the outgoing energy and direction are
+transformed back to the laboratory frame. The scattering is therefore not
+isotropic. Electron directions are isotropic in the current model, but the
+event selection and KN kernel make the photon scattering anisotropic.
+
+The current implementation is test-particle: the electron distribution is
+fixed and the energy gained by photons is not removed from the electron
+spectrum.
+
+6. Batch and parallel execution
+--------------------------------
+
+MC photons are processed in batches. A batch is propagated with vectorized
+NumPy operations. Packets are marked dead after reaching the outer boundary.
+When all packets in a batch are dead, the escaped energy, direction, weight,
+and scattering count are returned. Batches can be run with joblib using
+`n_jobs`, for example 8 processes.
+
+The escaped packet result includes:
+
+    energy
+    mu
+    weight
+    position
+    direction
+    n_scatter
+    scatter_radius
+
+`n_scatter` counts real scatterings only; null collisions are not included.
+`scatter_radius` stores the radius of every real scattering event and is used
+for diagnostics.
+
+7. Spherical sky-map projection
+--------------------------------
+
+For an escaped photon at the outer radius R, define mu as the cosine between
+the photon direction and the local outward radial direction. Its projected
+impact parameter is:
+
+    b = R sqrt(1 - mu^2) = R sin(theta)
+
+In spherical symmetry, all azimuthal rotations are equivalent. Therefore a
+packet can be used as a statistical representative of the corresponding
+projected annulus. The surface brightness is based on the projected annulus
+area, not just the sum of packet weights.
+
+The current observer code uses the area coordinate:
+
+    u = b^2 / R^2
+
+because projected area is:
+
+    dA = pi R^2 du
+
+An area-conserving Gaussian kernel is used in u. Each packet's kernel is
+normalized so that its integrated image weight is exactly its packet weight.
+Reflecting boundaries at u=0 and u=1 are used to avoid pushing central or
+edge photons artificially inward or outward. The final Cartesian image is
+normalized again on the pixel grid so that:
+
+    sum(image_pixel * pixel_area) = sum(packet_weight)
+
+The projection of an escaped photon at the outer boundary is appropriate for
+the final observer image. A photon crossing an internal radius is not yet an
+escaped photon and must not be counted as a final image; it may scatter later.
+
+8. Why ring/stripe patterns appeared
+-------------------------------------
+
+The first hard radial histogram assigned a finite MC sample to a full
+annulus. Any radial fluctuation therefore appeared as a coherent circular
+ring. A Gaussian kernel reduces this effect but cannot create missing
+statistics.
+
+An additional artificial central ring was caused by truncating a Gaussian at
+u=0 and renormalizing it without a reflecting boundary. This was corrected by
+adding reflected kernel images at u=0 and u=1.
+
+Even after this correction, the relevant quantity is the effective sample
+size, not the total packet count:
+
+    N_eff = (sum w)^2 / sum(w^2)
+
+The diagnostic notebook showed that some energy bands had only a few effective
+packets per radial bin, despite a large total number of packets. This can
+produce visible rings in a fully MC projected image. The physically correct
+remedy is to increase the packet number, stratify the energy sampling, or use
+adaptive kernel widths. The final image can remain entirely MC-based.
+
+9. Diagnostic notebook
+----------------------
+
+`test/diagnose_spherical_mc.ipynb` is a copy of the main demo with extra
+diagnostics:
+
+1. Disable scattering while keeping the synchrotron photon field fixed.
+2. Plot the no-scattering MC sky maps.
+3. Plot the radius distribution of real scattering events.
+4. Compare effective packet numbers by energy band and radial bin.
+5. Separate direct escaped and scattered escaped photon maps.
+6. Compare 21, 51, and 101 radial cells at fixed physical source radius.
+
+10. Spectrum normalization and photon counting
+-----------------------------------------------
+
+The weighted escaped photon sum is:
+
+    sum(escaped["weight"])
+
+The histogram returned by `spectrum` is a bin-integrated weighted photon
+number. To obtain dN/dE, divide by the energy-bin width:
+
+    dNdE = histogram / diff(energy_edges)
+
+The initial synchrotron field must be integrated over spherical shell volume
+before comparison with an escaped total spectrum:
+
+    dN_syn/dE = sum_i photon.value[i,E] * shell_volume[i]
+
+11. Test-particle versus self-consistent leptonic models
+---------------------------------------------------------
+
+The current MC can calculate the synchrotron and IC components of a leptonic
+double-hump spectrum for a prescribed electron distribution. It can include
+Thomson and Klein-Nishina behavior, SSC or external IC seed fields, multiple
+scattering, and energy-dependent morphology.
+
+However, it does not yet update the electron spectrum when photons gain
+energy. A self-consistent PWN model would need an electron transport equation
+including diffusion, injection, synchrotron cooling, IC cooling, and possibly
+adiabatic losses. This should be treated as a later extension, not a required
+part of the first course project.
+
+12. Polarization extension
+--------------------------
+
+Polarization is possible but is an optional extension. Photon packets would
+need Stokes parameters I, Q, U, V. Synchrotron polarization can be initialized
+from the electron index, while polarized Compton scattering requires a
+polarized Klein-Nishina/Mueller treatment and a consistent polarization basis.
+
+The polarization degree is not simply the synchrotron-to-IC flux ratio. It is:
+
+    Pi = sqrt(Q^2 + U^2) / I
+
+For an unpolarized IC component with the same polarization angle as the
+synchrotron component, Pi_total = Pi_syn I_syn/(I_syn + I_IC). In a perfectly
+spherical, isotropic, tangled-field model, azimuthal averaging can make the
+net Q and U vanish.
+
+13. Recommended course-project scope
+-------------------------------------
+
+The current scope is already sufficient for a substantial course project:
+
+    spherical synchrotron source
+    importance-sampled MC photon packets
+    event-driven KN IC scattering
+    batch vectorization and multiprocessing
+    escaped spectra and circular sky maps
+    photon-number conservation
+    effective-sample and grid-convergence diagnostics
+
+Recommended validation cases are:
+
+1. No-scattering convergence to the volume-integrated synchrotron spectrum.
+2. Optically thin one-scattering/SSC behavior.
+3. Increasing optical depth and multiple scattering.
+4. Packet-number, energy-resolution, and radial-grid convergence.
+5. Photon-number and energy-budget checks.
+
+Full self-consistent electron cooling, axisymmetric torus/jet geometry,
+gamma-gamma absorption, pair cascades, detector PSF, and polarization should
+be listed as future work unless the course specifically requires them.

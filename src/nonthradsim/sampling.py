@@ -73,3 +73,49 @@ def sample_photons(photon, n_particles, seed=None):
         "mu": mu,
         "dead": np.zeros(n_particles, dtype=bool),
     }
+
+
+def sample_manual_photons(position, energy, direction=None, weight=1.0, seed=None):
+    """Create photon packets from user-supplied positions and energies."""
+    position = np.asarray(position, dtype=float)
+    if position.ndim == 1:
+        position = position[None, :]
+    if position.ndim != 2 or position.shape[1] != 3:
+        raise ValueError("position must have shape (n_particles, 3)")
+
+    n_particles = position.shape[0]
+    energy = np.asarray(energy, dtype=float)
+    if energy.ndim == 0:
+        energy = np.full(n_particles, energy)
+    if energy.shape != (n_particles,):
+        raise ValueError("energy must have shape (n_particles,)")
+
+    rng = np.random.default_rng(seed)
+    if direction is None:
+        direction = _isotropic_vectors(rng, n_particles)
+    else:
+        direction = np.asarray(direction, dtype=float)
+        if direction.ndim == 1:
+            direction = direction[None, :]
+        if direction.shape != (n_particles, 3):
+            raise ValueError("direction must have shape (n_particles, 3)")
+        direction = direction / np.maximum(
+            np.linalg.norm(direction, axis=1), 1e-300
+        )[:, None]
+
+    weight = np.asarray(weight, dtype=float)
+    if weight.ndim == 0:
+        weight = np.full(n_particles, weight)
+    if weight.shape != (n_particles,):
+        raise ValueError("weight must have shape (n_particles,)")
+
+    radius = np.linalg.norm(position, axis=1)
+    mu = np.sum(position * direction, axis=1) / np.maximum(radius, 1e-300)
+    return {
+        "position": position.copy(),
+        "direction": direction.copy(),
+        "energy": energy.copy(),
+        "weight": weight.copy(),
+        "mu": mu,
+        "dead": np.zeros(n_particles, dtype=bool),
+    }
